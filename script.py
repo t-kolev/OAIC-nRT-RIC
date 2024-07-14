@@ -10,23 +10,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
-# Tools used for SCA
-sca_tools = ['Grype.txt', 'Snyk.txt', 'Trivy.txt']
-
-# RICs  to analyze
-rics = ['ONOS', 'OSC', 'OAIC']
-
+# List to store repositories with errors
 repoWithError = []
 
-# Packages to exclude in the RIC repos
+# Regular expressions to exclude certain packages in the RIC repositories
 test_package = re.compile(r'test/')
 benchmark_package = re.compile(r'benchmark')
 examples_package = re.compile(r'examples/')
 testapplication_package = re.compile(r'testapplication/')
 cert_package = re.compile(r'certs/')
 
-# First we normalize the results from each tool
+# Normalize the results from each tool
 def format_sca_tool_data(repository, tool):
     if tool == "Grype.txt":
         return formatGrype(repository)
@@ -35,24 +29,15 @@ def format_sca_tool_data(repository, tool):
     elif tool == "Trivy.txt":
         return formatTrivy(repository)
 
-# This gets all the vulnerabilities in a normalized way.
-# (In a list which includes all the vulnerabilities, which are not contained in a test package)
 # Format the results from Grype tool
 def formatGrype(repository):
     GrypeRepo = json.loads(repository)
     vulnArray = []
     for vuln in GrypeRepo["matches"]:
         path = vuln.get("artifact").get("locations")[0].get("path")
-        if test_package.search(path) is not None:
+        if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
             continue
-        elif benchmark_package.search(path) is not None:
-            continue
-        elif examples_package.search(path) is not None:
-            continue
-        elif testapplication_package.search(path) is not None:
-            continue
-        else:
-            vulnArray.append(vuln)
+        vulnArray.append(vuln)
     return vulnArray
 
 # Format the results from Snyk tool
@@ -64,47 +49,23 @@ def formatSnyk(repository):
             if not isinstance(target, str):
                 vulnList = target.get('vulnerabilities')
                 path = target.get('displayTargetFile')
-                if test_package.search(path) is not None:
-                    print("Snyk: Skipping:" + path)
+                if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
                     continue
-                elif benchmark_package.search(path) is not None:
-                    print("Snyk: Skipping:" + path)
-                    continue
-                elif examples_package.search(path) is not None:
-                    print("Snyk: Skipping:" + path)
-                    continue
-                elif testapplication_package.search(path) is not None:
-                    print("Snyk: Skipping:" + path)
-                    continue
-                else:
-                    for vuln in vulnList:
-                        vuln.pop('semver')
-                        vulnArray.append(vuln)
+                for vuln in vulnList:
+                    vuln.pop('semver', None)
+                    vulnArray.append(vuln)
             else:
                 if target == 'vulnerabilities':
                     vulnList = content.get('vulnerabilities')
                     path = content.get('displayTargetFile')
-                    print("Snyk path: {}".format(path))
-                    if test_package.search(path) is not None:
-                        print("Snyk: Skipping:" + path)
+                    if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
                         continue
-                    elif benchmark_package.search(path) is not None:
-                        print("Snyk: Skipping:" + path)
-                        continue
-                    elif examples_package.search(path) is not None:
-                        print("Snyk: Skipping:" + path)
-                        continue
-                    elif testapplication_package.search(path) is not None:
-                        print("Snyk: Skipping:" + path)
-                        continue
-                    else:
-                        for vuln in vulnList:
-                            vuln.pop('semver')
-                            vulnArray.append(vuln)
-                            print("1")
+                    for vuln in vulnList:
+                        vuln.pop('semver', None)
+                        vulnArray.append(vuln)
     else:
         global repoWithError
-        repoWithError.append(os.path.basename(content['path']))
+        repoWithError.append(os.path.basename(content.get('path', 'unknown')))
     return vulnArray
 
 # Format the results from Trivy tool
@@ -117,119 +78,75 @@ def formatTrivy(repository):
     if results is not None:
         for target in results:
             path = target.get("Target")
-            if test_package.search(path) is not None:
-                print("Trivy: Skipping:" + path)
+            if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path)]):
                 continue
-            elif benchmark_package.search(path) is not None:
-                print("Trivy: Skipping:" + path)
+            vulnTarget = target.get("Vulnerabilities", [])
+            if not vulnTarget:
                 continue
-            elif examples_package.search(path) is not None:
-                print("Trivy: Skipping:" + path)
-                continue
-            else:
-                vulnTarget = target.get("Vulnerabilities", [])
-                if not vulnTarget:
-                    continue
-                for vuln in vulnTarget:
-                    vuln["Path"] = path
-                vulnArray.extend(vulnTarget)
+            for vuln in vulnTarget:
+                vuln["Path"] = path
+            vulnArray.extend(vulnTarget)
     return vulnArray
 
 # Get vulnerabilities categorized by directories
+# This was done so can create a sca_results.json file with the vulnerabilities categorized by directories, utilize the already existing code
 def get_vulnerabilities_by_directory(data, tool):
-        
-        # For grype we can work with the formatted data directly
-        if tool == "Grype.txt":
-            formatted_data = format_sca_tool_data(data, "Grype.txt")
-        
-        # For trivy we need to load the data into a json object first.
-        # 
-        elif tool == "Trivy.txt":
-            repo = json.loads(data)
-            results = repo.get("Results")
+    # Initialize the dictionary to store vulnerabilities by directory
+    vulnerabilities_by_directory = defaultdict(list)
 
-        # For snyk we dont know yet
-        elif tool == "Snyk.txt":
-            content = json.loads(data)
+    # For Grype we can work with the formatted data directly
+    if tool == "Grype.txt":
+        formatted_data = format_sca_tool_data(data, "Grype.txt")
+        for vuln in formatted_data:
+            path = vuln.get("artifact").get("locations")[0].get("path")
+            if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
+                continue
+            directory = path.split('/')[1]  # Extract the first part of the path after the root
+            vulnerabilities_by_directory[directory].append(vuln)
 
-        vulnerabilities_by_directory = defaultdict(list)
-        
-        if tool == "Grype.txt":
-            for vuln in formatted_data:
-                path = vuln.get("artifact").get("locations")[0].get("path")
-                directory = os.path.dirname(path)
+    # For Trivy we need to load the data into a JSON object first
+    elif tool == "Trivy.txt":
+        repo = json.loads(data)
+        results = repo.get("Results")
+        for vuln in results:
+            path = vuln.get("Target")
+            if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), cert_package.search(path)]):
+                continue
+            vulnTarget = vuln.get("Vulnerabilities", [])
+            if not vulnTarget:
+                continue
+            for vuln in vulnTarget:
+                vuln["Path"] = path
+                directory = path.split('/')[0]  # Extract the first part of the path after the root
                 vulnerabilities_by_directory[directory].append(vuln)
-            return vulnerabilities_by_directory
-        
-        elif tool == "Trivy.txt":
-            for vuln in results:
-                path = vuln.get("Target")
-                if test_package.search(path) is not None:
-                    continue
-                elif benchmark_package.search(path) is not None:
-                    continue
-                elif examples_package.search(path) is not None:
-                    continue
-                elif cert_package.search(path) is not None:
-                    continue
-                else:
-                    vulnTarget = vuln.get("Vulnerabilities", [])
-                    if not vulnTarget:
+
+    # For Snyk we load the data as JSON
+    elif tool == "Snyk.txt":
+        content = json.loads(data)
+        if "error" not in content:
+            for target in content:
+                if not isinstance(target, str):
+                    vulnList = target.get('vulnerabilities')
+                    path = target.get('displayTargetFile')
+                    if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
+                        print("Snyk: Skipping:" + path)
                         continue
-                    for vuln in vulnTarget:
-                        vuln["Path"] = path
-                        directory = os.path.dirname(path)
+                    for vuln in vulnList:
+                        directory = path.split('/')[0]  # Extract the first part of the path after the root
                         vulnerabilities_by_directory[directory].append(vuln)
-            return vulnerabilities_by_directory
-        
-        elif tool == "Snyk.txt":
-            
-            if "error" not in content:
-                for target in content:
-                    if not isinstance(target, str):
-                        vulnList = target.get('vulnerabilities')
-                        path = target.get('displayTargetFile')
-                        if test_package.search(path) is not None:
+                else:
+                    if target == 'vulnerabilities':
+                        vulnList = content.get('vulnerabilities')
+                        path = content.get('displayTargetFile')
+                        print("Snyk path: {}".format(path))
+                        if any([test_package.search(path), benchmark_package.search(path), examples_package.search(path), testapplication_package.search(path)]):
                             print("Snyk: Skipping:" + path)
                             continue
-                        elif benchmark_package.search(path) is not None:
-                            print("Snyk: Skipping:" + path)
-                            continue
-                        elif examples_package.search(path) is not None:
-                            print("Snyk: Skipping:" + path)
-                            continue
-                        elif testapplication_package.search(path) is not None:
-                            print("Snyk: Skipping:" + path)
-                            continue
-                        else:
-                            for vuln in vulnList:
-                                directory = os.path.dirname(path)
-                                vulnerabilities_by_directory[directory].append(vuln)
-                    else:
-                        if target == 'vulnerabilities':
-                            vulnList = content.get('vulnerabilities')
-                            path = content.get('displayTargetFile')
-                            print("Snyk path: {}".format(path))
-                            if test_package.search(path) is not None:
-                                print("Snyk: Skipping:" + path)
-                                continue
-                            elif benchmark_package.search(path) is not None:
-                                print("Snyk: Skipping:" + path)
-                                continue
-                            elif examples_package.search(path) is not None:
-                                print("Snyk: Skipping:" + path)
-                                continue
-                            elif testapplication_package.search(path) is not None:
-                                print("Snyk: Skipping:" + path)
-                                continue
-                            else:
-                                for vuln in vulnList:
-                                    directory = os.path.dirname(path)
-                                    vulnerabilities_by_directory[directory].append(vuln)
-                
-        return vulnerabilities_by_directory
-        
-        
+                        for vuln in vulnList:
+                            directory = path.split('/')[0]  # Extract the first part of the path after the root
+                            vulnerabilities_by_directory[directory].append(vuln)
+                            
+    return vulnerabilities_by_directory
 # Save vulnerabilities by directory
 def save_vulnerabilities_by_directory(vulnerabilities_by_directory, tool, base_dir):
     for directory, vulnerabilities in vulnerabilities_by_directory.items():
@@ -243,7 +160,19 @@ def save_vulnerabilities_by_directory(vulnerabilities_by_directory, tool, base_d
 
         with open(filepath, 'w') as json_file:
             json.dump(vulnerabilities, json_file, separators=(',', ':'))
-        
+
+
+# Function to gather repository names within each RIC directory
+def gather_repositories(rics):
+    repositories = {ric: [] for ric in rics}
+    for ric in rics:
+        ric_dir = f"./{ric}"
+        if not os.path.exists(ric_dir):
+            os.makedirs(ric_dir)
+        for repository in sorted(os.listdir(ric_dir)):
+            repositories[ric].append(repository)
+    return repositories
+
 
 # Dump scan results into a JSON file
 def dump_scan_results(rics, sca_tools):
@@ -252,23 +181,12 @@ def dump_scan_results(rics, sca_tools):
     onos_repos = []
     osc_repos = []
 
-    # Gather repository names within each RIC directory
-    for ric in rics:
-        ric_dir = f"./{ric}"
-        if not os.path.exists(ric_dir):
-            os.makedirs(ric_dir)
-        for repository in sorted(os.listdir(ric_dir)):
-            if ric == "ONOS":
-                onos_repos.append(repository)
-            elif ric == "OSC":
-                osc_repos.append(repository)
+     # Gather repository names within each RIC directory
+    repositories = gather_repositories(rics)
 
     # Initialize the scan_results dictionary with repositories
     for ric in rics:
-        if ric == "ONOS":
-            scan_results[ric] = {repo: {} for repo in onos_repos}
-        elif ric == "OSC":
-            scan_results[ric] = {repo: {} for repo in osc_repos}
+        scan_results[ric] = {repo: {} for repo in repositories[ric]}
 
         # Populate scan_results with SCA tool results
         for repository in scan_results[ric].keys():
@@ -301,7 +219,7 @@ def get_cves_cvss_dependencies(sca_tool, sca_tool_data):
                 if cvss_info and len(cvss_info) > 0:
                     cvss.append(cvss_info[0].get("metrics").get("baseScore"))
                 else:
-                    cvss.append(None)  # or handle as you prefer
+                    cvss.append(None)
                     print(f"Vulnerability without CVSS: {vulnerability.get('vulnerability').get('id')}")
                 vulnerability_match_details = vulnerability.get("matchDetails")
                 for match_detail in vulnerability_match_details:
@@ -410,6 +328,11 @@ def count_cves(cve_data):
                         print(f"Exception: {e}")
                         total_cve_count = 0
                     
+                    
+                #print("RIC: {}, Repository: {}, SCA Tool: {}, total CVE Count: {}".format(ric, repository, sca_tool, total_cve_count))
+                    
+                # Append only unique CVEs to count total unique vulnerabilities for a repository
+                
                 #print("RIC: {}, Repository: {}, SCA Tool: {}, total CVE Count: {}".format(ric, repository, sca_tool, total_cve_count))
                     
                 # Append only unique CVEs to count total unique vulnerabilities for a repository
@@ -426,7 +349,7 @@ def count_cves(cve_data):
     pprint.pprint(ric_cves)
     for ric in ric_cves.keys():
         print("RIC: {}, Total unique CVEs: {}".format(ric, len(ric_cves[ric])))
-        
+
 # Count CVEs per repository and tool
 def per_repo_cve_count(cve_data):
     print("1. CVEs per RIC/repo/tool\n"
@@ -434,7 +357,7 @@ def per_repo_cve_count(cve_data):
           "3. Total CVEs per RIC/repo without duplicates")
     
     # First CVEs per RIC/repo/tool
-    cve_per_ric_repo_tool = dict.fromkeys(rics)
+    cve_per_ric_repo_tool = {ric: {} for ric in cve_data.keys()}
     for ric in cve_data.keys():
         cve_per_ric_repo_tool[ric] = dict.fromkeys(cve_data[ric].keys())
         for repository in cve_data[ric].keys():
@@ -451,8 +374,8 @@ def per_repo_cve_count(cve_data):
                             cve_per_ric_repo_tool[ric][repository][sca_tool] = 0
     #pprint.pprint(cve_per_ric_repo_tool)
 
-    # Now combine the CVEs from all the tools and save two lists with_dups and without_dups
-    cve_per_ric_repo = dict.fromkeys(rics)
+    # Combine the CVEs from all the tools and save two lists with duplicates and without duplicates
+    cve_per_ric_repo = {ric: {} for ric in cve_data.keys()}
     for ric in cve_data.keys():
         cve_per_ric_repo[ric] = dict.fromkeys(cve_data[ric].keys())
         for repository in cve_data[ric].keys():
@@ -465,8 +388,8 @@ def per_repo_cve_count(cve_data):
                         if cve not in cve_list_without_dups:
                             cve_list_without_dups.append(cve)
                 except TypeError as e:
-                        print(f"NoneType found for RIC: {ric}, Repository: {repository}, SCA_Tool: {sca_tool}")
-                        print(f"Exception: {e}")
+                    print(f"NoneType found for RIC: {ric}, Repository: {repository}, SCA_Tool: {sca_tool}")
+                    print(f"Exception: {e}")
             cve_per_ric_repo[ric][repository] = [cve_list_with_dups, cve_list_without_dups]
             #print("Repository: {}".format(repository))
             #print("Length with duplicates: {}".format(len(cve_list_with_dups)))
@@ -498,7 +421,7 @@ def cvss_distribution(cvss_data):
     critical_cvss_per_ric_repo = dict.fromkeys(cvss_data.keys())
     cve_per_ric_repo = dict.fromkeys(cvss_data.keys())
     none_counter = 0
-    
+     
     for ric in cvss_data.keys():
         low_cvss_per_ric_repo[ric] = dict.fromkeys(cvss_data[ric].keys())
         medium_cvss_per_ric_repo[ric] = dict.fromkeys(cvss_data[ric].keys())
@@ -717,11 +640,9 @@ def main():
     'cyan': '#56B4E9',
     'grey': '#999999'
     }
-
-
-    # Plotting with adjusted figure size and bar width
-    plt.figure(figsize=(3, 5))
-    plt.bar(total_vulnerabilities_ric.keys(), total_vulnerabilities_ric.values(), color=color_blind_friendly_palette['blue'], width=0.5)
+    
+    plt.figure(figsize=(7, 5))  # Adjust the figure size to be more appropriate for a single bar
+    plt.bar(total_vulnerabilities_ric.keys(), total_vulnerabilities_ric.values(), color=color_blind_friendly_palette['blue'], width=0.2)
     plt.title(f'Total Number of Vulnerabilities per RIC (Tool: {tool_name})')
     plt.xlabel('RIC')
     plt.ylabel('Number of Vulnerabilities')
@@ -737,8 +658,11 @@ def main():
         plt.title(f'Vulnerabilities per Repository for {ric} (Tool: {tool_name})')
         plt.xlabel('Repository')
         plt.ylabel('Number of Vulnerabilities')
-        plt.ylim(0, max(repos.values()) + 5)  # Adjust y-axis limit to fit the data
-        plt.xticks(rotation=90)
+        if repos.values():  # Check if the sequence is not empty
+            plt.ylim(0, max(repos.values()) + 5)  # Adjust y-axis limit to fit the data
+        else:
+            plt.ylim(0, 5)  # Set a default y-axis limit
+        plt.xticks(rotation=60)
         plt.grid(axis='y')
         plt.tight_layout()
         plt.savefig(f'vulnerabilities_per_repo_{ric}_{tool_name}.png', dpi=300)
@@ -756,14 +680,13 @@ def main():
         plt.savefig(f'severity_distribution_{ric}_{tool_name}.png', dpi=300)
         plt.show()
 
-    plt.figure(figsize=(3, 5))
+    plt.figure(figsize=(7, 5))
     plt.bar(vulnerable_packages_per_ric.keys(), vulnerable_packages_per_ric.values(), color=color_blind_friendly_palette['yellow'], width=0.5)
     plt.title(f'Distribution of Vulnerable Dependency Packages per RIC (Tool: {tool_name})')
     plt.xlabel('RIC')
     plt.ylabel('Number of Vulnerable Packages')
     plt.ylim(0, max(vulnerable_packages_per_ric.values()) + 5)  # Adjust y-axis limit to fit the data
     plt.grid(axis='y')
-    plt.tight_layout()  # Ensure everything fits without being cut off
     plt.savefig(f'vulnerable_packages_per_ric_{tool_name}.png', dpi=300)
     plt.show()
 
@@ -773,8 +696,12 @@ def main():
         plt.title(f'Vulnerable Dependency Packages per Repository for {ric} (Tool: {tool_name})')
         plt.xlabel('Repository')
         plt.ylabel('Number of Vulnerable Packages')
-        plt.ylim(0, max(repos.values()) + 5)  # Adjust y-axis limit to fit the data
-        plt.xticks(rotation=90)
+        if repos.values():  # Check if the sequence is not empty
+            plt.ylim(0, max(repos.values()) + 5)  # Adjust y-axis limit to fit the data
+        else:
+            plt.ylim(0, 5)  # Set a default y-axis limit    
+
+        plt.xticks(rotation=60)
         plt.grid(axis='y')
         plt.tight_layout()
         plt.savefig(f'vulnerable_packages_per_repo_{ric}_{tool_name}.png', dpi=300)
