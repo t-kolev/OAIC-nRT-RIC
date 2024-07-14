@@ -1,0 +1,9 @@
+# ignore all logs
+*.log
+*.tar
+*.tgz
+*.swp
+*.lock
+.tox
+.DS_Store
+docs/_build/
