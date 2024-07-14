@@ -1,0 +1,51 @@
+# ==================================================================================
+#       Copyright (c) 2020 Nokia
+#       Copyright (c) 2020 AT&T Intellectual Property.
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#          http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# ==================================================================================
+
+# This Dockerfile uses a two stage Docker build
+FROM nexus3.o-ran-sc.org:10004/o-ran-sc/bldr-alpine3:12-a3.11
+
+# copy rmr headers and libraries from builder image in lieu of an Alpine package
+COPY --from=nexus3.o-ran-sc.org:10002/o-ran-sc/bldr-alpine3-rmr:4.0.5 /usr/local/include/rmr /usr/local/include/rmr
+COPY --from=nexus3.o-ran-sc.org:10002/o-ran-sc/bldr-alpine3-rmr:4.0.5 /usr/local/lib64/librmr* /usr/local/lib64/
+
+# go will complain if there is a go.mod at the root of the GOPATH so we can't.
+RUN mkdir myxapp
+COPY receiver.go myxapp/receiver.go
+COPY go.mod myxapp/go.mod
+
+# do the build
+WORKDIR myxapp
+ENV GO111MODULE on
+ENV GO_ENABLED 0
+ENV GOOS linux
+RUN go build -a -installsuffix cgo -o receiver receiver.go
+
+# 2nd stage
+FROM alpine:3.11
+
+# copy rmr libraries from builder image in lieu of an Alpine package
+COPY --from=nexus3.o-ran-sc.org:10002/o-ran-sc/bldr-alpine3-rmr:4.0.5 /usr/local/lib64/librmr* /usr/local/lib64/
+
+COPY --from=0 /myxapp/receiver .
+COPY delay-config-file.yaml .
+
+# rmr setup
+RUN mkdir -p /opt/route/
+ENV LD_LIBRARY_PATH /usr/local/lib:/usr/local/lib64
+ENV RMR_SEED_RT /opt/route/local.rt
+
+CMD ["./receiver", "-f", "delay-config-file.yaml"]

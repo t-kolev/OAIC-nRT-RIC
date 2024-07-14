@@ -1,0 +1,670 @@
+# test_a1.tavern.yaml
+
+test_name: test healthcheck
+
+stages:
+  - name: test the a1 healthcheck
+    request:
+      url: http://localhost:10000/a1-p/healthcheck
+      method: GET
+    response:
+      status_code: 200
+
+---
+
+test_name: test admission control
+
+stages:
+  - name: type not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: GET
+    response:
+      status_code: 404
+
+  - name: type list empty
+    request:
+      url: http://localhost:10000/a1-p/policytypes
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: instance list 404
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies
+      method: GET
+    response:
+      status_code: 404
+
+  - name: put the type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: PUT
+      json:
+        name: Admission Control
+        description: various parameters to control admission of dual connection
+        policy_type_id: 6660666
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+          additionalProperties: false
+          properties:
+            class:
+              type: integer
+              minimum: 1
+              maximum: 256
+              description: integer id representing class to which we are applying policy
+            enforce:
+              type: boolean
+              description: Whether to enable or disable enforcement of policy on this class
+            window_length:
+              type: integer
+              minimum: 15
+              maximum: 300
+              description: Sliding window length in seconds
+            trigger_threshold:
+              type: integer
+              minimum: 1
+            blocking_rate:
+              type: number
+              minimum: 0
+              maximum: 100
+          required:
+            - class
+            - enforce
+            - window_length
+            - trigger_threshold
+            - blocking_rate
+    response:
+      status_code: 201
+
+  - name: type there now
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: GET
+    response:
+      status_code: 200
+
+  - name: now in type list
+    request:
+      url: http://localhost:10000/a1-p/policytypes
+      method: GET
+    response:
+      status_code: 200
+      json: [6660666]
+
+  - name: instance list 200 but empty
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: test the admission control policy get not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: GET
+    response:
+      status_code: 404
+
+  - name: test the admission control policy status get not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy/status
+      method: GET
+    response:
+      status_code: 404
+
+  - name: bad body for admission control policy
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: PUT
+      json:
+        not: "expected"
+      headers:
+        content-type: application/json
+    response:
+      status_code: 400
+
+  - name: not a json
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: PUT
+      data: "asdf"
+    response:
+      status_code: 415
+
+  # put it properly
+  - name: put the admission control policy instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: PUT
+      json:
+        class: 12
+        enforce: true
+        window_length: 20
+        blocking_rate: 20
+        trigger_threshold: 10
+      headers:
+        content-type: application/json
+    response:
+      status_code: 202
+
+  - name: cant delete type with instances
+    delay_before: 3  # wait for the type acks to come back first
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: DELETE
+    response:
+      status_code: 400
+
+  - name: test the admission control policy get
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: GET
+    response:
+      status_code: 200
+      json:
+        class: 12
+        enforce: true
+        window_length: 20
+        blocking_rate: 20
+        trigger_threshold: 10
+
+  - name: test the admission control policy status get
+    delay_before: 10 # give it a few seconds for rmr
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "IN EFFECT"
+        has_been_deleted: False
+        created_at: !anyfloat
+
+  - name: instance list 200 and contains the instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies
+      method: GET
+    response:
+      status_code: 200
+      json:
+        - admission_control_policy
+
+  # DELETE the instance and make sure subsequent GETs return properly
+  - name: delete the instance
+    delay_after: 4
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: DELETE
+    response:
+      status_code: 202
+
+  - name: status should now be not in effect but still there
+    delay_before: 3 # give it a few seconds for rmr
+    delay_after: 10 # 3 + 10 > 10; that is, wait until t2 expires
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "NOT IN EFFECT"
+        has_been_deleted: True
+        deleted_at: !anyfloat
+        created_at: !anyfloat
+
+  - name: instance list 200 but no instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: cant get instance status
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy/status
+      method: GET
+    response:
+      status_code: 404
+
+  - name: cant get instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666/policies/admission_control_policy
+      method: GET
+    response:
+      status_code: 404
+
+  - name: delete ac type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: DELETE
+    response:
+      status_code: 204
+
+  - name: cant delete again
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: DELETE
+    response:
+      status_code: 404
+
+  - name: cant get
+    request:
+      url: http://localhost:10000/a1-p/policytypes/6660666
+      method: DELETE
+    response:
+      status_code: 404
+
+  - name: empty type list
+    request:
+      url: http://localhost:10000/a1-p/policytypes
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+
+---
+
+test_name: test the delay receiver
+
+stages:
+
+  - name: test the delay policy type not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001
+      method: GET
+    response:
+      status_code: 404
+
+  - name: not yet in type list
+    request:
+      url: http://localhost:10000/a1-p/policytypes
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: instance list 404
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies
+      method: GET
+    response:
+      status_code: 404
+
+  - name: put the type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001
+      method: PUT
+      json:
+        name: test policy
+        description: just for testing
+        policy_type_id: 20001
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+          properties:
+            test:
+              type: string
+          required:
+            - test
+          additionalProperties: false
+    response:
+      status_code: 201
+
+  - name: type there now
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001
+      method: GET
+    response:
+      status_code: 200
+      json:
+        name: test policy
+        description: just for testing
+        policy_type_id: 20001
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+          properties:
+            test:
+              type: string
+          required:
+            - test
+          additionalProperties: false
+
+  - name: now in type list
+    request:
+      url: http://localhost:10000/a1-p/policytypes
+      method: GET
+    response:
+      status_code: 200
+      json:
+       - 20001
+
+  - name: instance list 200 but empty
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: test the delay policy instance get not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest
+      method: GET
+    response:
+      status_code: 404
+
+  - name: test the delay policy status get not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 404
+
+  - name: bad body for delaytest
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest
+      method: PUT
+      json:
+        not: "welcome"
+    response:
+      status_code: 400
+
+  - name: create delay policy instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest
+      method: PUT
+      json:
+        test: foo
+      headers:
+        content-type: application/json
+    response:
+      status_code: 202
+
+  - name: test the delay status get, not in effect yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "NOT IN EFFECT"
+        has_been_deleted: False
+        created_at: !anyfloat
+
+  - name: test the delay policy get
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest
+      method: GET
+    response:
+      status_code: 200
+      json:
+        test: foo
+
+  - name: instance list 200 and there
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies
+      method: GET
+    response:
+      status_code: 200
+      json:
+       - delaytest
+
+  - name: test the delay status get
+    max_retries: 3
+    delay_before: 6  # give it a few seconds for rmr ; delay reciever sleeps for 5 seconds by default
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "IN EFFECT"
+        has_been_deleted: False
+        created_at: !anyfloat
+
+  # DELETE the instance and make sure subsequent GETs return properly
+  - name: delete the instance
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest
+      method: DELETE
+    response:
+      status_code: 202
+
+  - name: test the delay status get immediately
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "IN EFFECT"
+        has_been_deleted: True
+        deleted_at: !anyfloat
+        created_at: !anyfloat
+
+  - name: test the delay status get after delay but before timers
+    delay_before: 7
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "NOT IN EFFECT"
+        has_been_deleted: True
+        deleted_at: !anyfloat
+        created_at: !anyfloat
+
+  - name: test the delay status get after delay and after the timers
+    delay_before: 7
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20001/policies/delaytest/status
+      method: GET
+    response:
+      status_code: 404
+
+---
+
+test_name: test query
+
+stages:
+  - name: type not there yet
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001
+      method: GET
+    response:
+      status_code: 404
+
+  - name: put the type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001
+      method: PUT
+      json:
+        name: query test
+        description: test
+        policy_type_id: 1006001
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+          additionalProperties: false
+          properties:
+            foo:
+              type: string
+          required:
+            - foo
+    response:
+      status_code: 201
+
+  - name: type there now
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001
+      method: GET
+    response:
+      status_code: 200
+
+  - name: instance list 200 but empty
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  - name: instance 1
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies/qt1
+      method: PUT
+      json:
+        foo: "bar1"
+      headers:
+        content-type: application/json
+    response:
+      status_code: 202
+
+  - name: instance 2
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies/qt2
+      method: PUT
+      json:
+        foo: "bar2"
+      headers:
+        content-type: application/json
+    response:
+      status_code: 202
+
+  - name: instance list
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies
+      method: GET
+    response:
+      status_code: 200
+      json: [qt1, qt2]
+
+  # after the query, a1 should send, query receiver should send back, and the policy should be in effect
+  # sometimes in kubernetes, this test takes a long time to work because of an k8s issue
+  # empirically we find that the si95 rmr finally "detects" failure after about 75 seconds, retries, and then works.
+  - name: test the query status get
+    max_retries: 100
+    delay_before: 1
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies/qt1/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "IN EFFECT"
+        has_been_deleted: False
+        created_at: !anyfloat
+
+  - name: test the query status get 2
+    max_retries: 100
+    delay_before: 1
+    request:
+      url: http://localhost:10000/a1-p/policytypes/1006001/policies/qt2/status
+      method: GET
+    response:
+      status_code: 200
+      json:
+        instance_status: "IN EFFECT"
+        has_been_deleted: False
+        created_at: !anyfloat
+
+---
+
+test_name: test bad routing file endpoint
+
+stages:
+
+  - name: put the type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20002
+      method: PUT
+      json:
+        name: test policy
+        description: just for testing
+        policy_type_id: 20002
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+          properties:
+            test:
+              type: string
+          required:
+            - test
+          additionalProperties: false
+
+  - name: create policy instance that will go to a broken routing endpoint
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20002/policies/brokentest
+      method: PUT
+      json:
+        test: foo
+      headers:
+        content-type: application/json
+    response:
+      status_code: 202
+
+  - name: should be no status
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20002/policies/brokentest/status
+      method: GET
+    response:
+      status_code: 200
+      json: []
+
+  # this one cant currently be deleted, see the comment in a1/data.py
+
+---
+
+test_name: bad_requests
+
+stages:
+
+  - name: bad type get
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20666
+      method: GET
+    response:
+      status_code: 404
+
+  - name: bad instance get bad type
+    request:
+      url: http://localhost:10000/a1-p/policytypes/20666/policies/nonono
+      method: GET
+    response:
+      status_code: 404
+
+  - name: bad int range 1
+    request:
+      url: http://localhost:10000/a1-p/policytypes/0
+      method: PUT
+      json:
+        name: test policy
+        description: just for testing
+        policy_type_id: 0
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+    response:
+      status_code: 400
+
+  - name: bad int range 2
+    request:
+      url: http://localhost:10000/a1-p/policytypes/2147483648
+      method: PUT
+      json:
+        name: test policy
+        description: just for testing
+        policy_type_id: 2147483648
+        create_schema:
+          "$schema": http://json-schema.org/draft-07/schema#
+          type: object
+    response:
+      status_code: 400

@@ -1,0 +1,40 @@
+#note: the xapp frame calls rmrready, which requires a route table, even if the app only uses rts. So we can never fully delete these.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: testreceiverconf
+data:
+  local.rt: |
+    newrt|start
+    # right now the test receivers in go cannot use rts so we need this. See the comment in the receiver xapp
+    rte|20011|a1rmrservice:4562
+    newrt|end
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: delayreceiverconf
+data:
+  local.rt: |
+    newrt|start
+    # right now the test receivers in go cannot use rts so we need this. See the comment in the receiver xapp
+    rte|20011|a1rmrservice:4562
+    newrt|end
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: queryreceiverconf
+data:
+  local.rt: |
+    newrt|start
+    # this query is initiated in the query receiver
+    rte|20012|a1rmrservice:4562
+    # right now the test receivers in go cannot use rts so we need this. See the comment in the receiver xapp
+    rte|20011|a1rmrservice:4562
+    newrt|end
