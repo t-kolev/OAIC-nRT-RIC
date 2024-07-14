@@ -1,0 +1,7 @@
+https://github.com/openaicellular/ric-app-ic-e2like
+https://github.com/openaicellular/ric-app-ml-e2like
+https://github.com/openaicellular/ric-plt-e2
+https://github.com/openaicellular/ric-plt-ric-dep
+https://github.com/openaicellular/ric-plt-a1
+https://github.com/openaicellular/ric-scp-kpimon
+https://github.com/openaicellular/RIC-Deployment
