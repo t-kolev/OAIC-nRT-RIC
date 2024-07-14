@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: a1conf
+data:
+  local.rt: |
+    newrt|start
+    mse|20010|6660666|testreceiverrmrservice:4560
+    mse|20010|20001|delayreceiverrmrservice:4563
+    # purposefully bad route to make sure rmr doesn't block on non listening receivers:
+    rte|20010|testreceiverrmrservice:4563
+    newrt|end

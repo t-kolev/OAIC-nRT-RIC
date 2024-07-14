@@ -1,0 +1,16 @@
+replicaCount: 1
+
+testrmrservice:
+  name: testreceiverrmrservice
+  type: ClusterIP
+  port: 4560
+
+delayrmrservice:
+  name: delayreceiverrmrservice
+  type: ClusterIP
+  port: 4563
+
+queryrmrservice:
+  name: queryreceiverrmrservice
+  type: ClusterIP
+  port: 4564

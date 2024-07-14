@@ -1,0 +1,366 @@
+swagger: '2.0'
+info:
+  version: 2.1.0
+  title: RIC A1
+paths:
+  /a1-p/healthcheck:
+    get:
+      description: |
+        Perform a healthcheck on a1
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_healthcheck
+      responses:
+        '200':
+          description: >
+            A1 is healthy. Anything other than a 200 should be considered a1 as
+            failing
+      parameters: []
+  /a1-p/policytypes:
+    get:
+      description: Get a list of all registered policy type ids
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_all_policy_types
+      responses:
+        '200':
+          description: list of all registered policy type ids
+          examples:
+            application/json:
+              - 20000
+              - 20020
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/policy_type_id'
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+      produces:
+        - application/json
+  '/a1-p/policytypes/{policy_type_id}':
+    parameters:
+      - name: policy_type_id
+        in: path
+        required: true
+        minimum: 1
+        maximum: 2147483647
+        type: integer
+        description: >
+          represents a policy type identifier. Currently this is restricted to
+          an integer range.
+    get:
+      description: |
+        Get this policy type
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_policy_type
+      responses:
+        '200':
+          description: policy type successfully found
+          schema:
+            $ref: '#/definitions/policy_type_schema'
+        '404':
+          description: |
+            policy type not found
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+      produces:
+        - application/json
+    delete:
+      description: >
+        Delete this policy type. Can only be performed if there are no instances
+        of this type
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.delete_policy_type
+      responses:
+        '204':
+          description: |
+            policy type successfully deleted
+        '400':
+          description: >
+            Policy type cannot be deleted because there are instances All
+            instances must be removed before a policy type can be deleted
+        '404':
+          description: |
+            policy type not found
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+    put:
+      description: >
+        Create a new policy type . Replace is not currently allowed; to replace,
+        for now do a DELETE and then a PUT again.
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.create_policy_type
+      responses:
+        '201':
+          description: policy type successfully created
+        '400':
+          description: 'illegal ID, or object already existed'
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters:
+        - name: body
+          in: body
+          schema:
+            $ref: '#/definitions/policy_type_schema'
+      consumes:
+        - application/json
+  '/a1-p/policytypes/{policy_type_id}/policies':
+    parameters:
+      - name: policy_type_id
+        in: path
+        required: true
+        minimum: 1
+        maximum: 2147483647
+        type: integer
+        description: >
+          represents a policy type identifier. Currently this is restricted to
+          an integer range.
+    get:
+      description: get a list of all policy instance ids for this policy type id
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_all_instances_for_type
+      responses:
+        '200':
+          description: list of all policy instance ids for this policy type id
+          examples:
+            application/json:
+              - 3d2157af-6a8f-4a7c-810f-38c2f824bf12
+              - 06911bfc-c127-444a-8eb1-1bffad27cc3d
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/policy_instance_id'
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+      produces:
+        - application/json
+  '/a1-p/policytypes/{policy_type_id}/policies/{policy_instance_id}':
+    parameters:
+      - name: policy_type_id
+        in: path
+        required: true
+        minimum: 1
+        maximum: 2147483647
+        type: integer
+        description: >
+          represents a policy type identifier. Currently this is restricted to
+          an integer range.
+      - name: policy_instance_id
+        in: path
+        required: true
+        type: string
+        description: >
+          represents a policy instance identifier. UUIDs are advisable but can
+          be any string
+    get:
+      description: |
+        Retrieve the policy instance
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_policy_instance
+      responses:
+        '200':
+          description: >
+            The policy instance. the schema of this object is defined by the
+            create_schema field of the policy type
+          schema:
+            type: object
+        '404':
+          description: >
+            there is no policy instance with this policy_instance_id or there is
+            no policy type with this policy_type_id
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+      produces:
+        - application/json
+    delete:
+      description: |
+        Delete this policy instance
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.delete_policy_instance
+      responses:
+        '202':
+          description: |
+            policy instance deletion initiated
+        '404':
+          description: >
+            there is no policy instance with this policy_instance_id or there is
+            no policy type with this policy_type_id
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+    put:
+      description: >
+        Create or replace a policy instance of type policy_type_id. The schema
+        of the PUT body is defined by the create_schema field of the policy
+        type.
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.create_or_replace_policy_instance
+      responses:
+        '202':
+          description: |
+            Policy instance creation initiated
+        '400':
+          description: |
+            Bad PUT body for this policy instance
+        '404':
+          description: |
+            There is no policy type with this policy_type_id
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters:
+        - name: body
+          in: body
+          schema:
+            type: object
+            description: >
+              the schema of this object is defined by the create_schema field of
+              the policy type
+      consumes:
+        - application/json
+  '/a1-p/policytypes/{policy_type_id}/policies/{policy_instance_id}/status':
+    parameters:
+      - name: policy_type_id
+        in: path
+        required: true
+        minimum: 1
+        maximum: 2147483647
+        type: integer
+        description: >
+          represents a policy type identifier. Currently this is restricted to
+          an integer range.
+      - name: policy_instance_id
+        in: path
+        required: true
+        type: string
+        description: >
+          represents a policy instance identifier. UUIDs are advisable but can
+          be any string
+    get:
+      description: >
+        Retrieve the policy instance status across all handlers of the policy If
+        this endpoint returns successfully (200), it is either IN EFFECT or NOT
+        IN EFFECT. IN EFFECT is returned if at least one policy handler in the
+        RIC is implementing the policy NOT IN EFFECT is returned otherwise If a
+        policy instance is successfully deleted, this endpoint will return a 404
+        (not a 200)
+      tags:
+        - A1 Mediator
+      operationId: a1.controller.get_policy_instance_status
+      responses:
+        '200':
+          description: |
+            successfully retrieved the status
+          schema:
+            type: object
+            properties:
+              instance_status:
+                type: string
+                enum:
+                  - IN EFFECT
+                  - NOT IN EFFECT
+              has_been_deleted:
+                type: boolean
+              created_at:
+                type: string
+                format: date-time
+        '404':
+          description: >
+            there is no policy instance with this policy_instance_id or there is
+            no policy type with this policy_type_id
+        '503':
+          description: >-
+            Potentially transient backend database error. Client should attempt
+            to retry later.
+      parameters: []
+      produces:
+        - application/json
+  /data-delivery:
+    post:
+      description: |
+        Deliver data produced by data producer.
+      tags:
+        - A1 EI Data Delivery
+      operationId: a1.controller.data_delivery
+      responses:
+        '200':
+          description: |
+            successfully delivered data from data producer
+        '404':
+          description: |
+            no job id defined for this data delivery
+      parameters:
+        - name: body
+          in: body
+          schema:
+            type: object
+            description: |
+              object to represent data object
+      consumes:
+        - application/json
+definitions:
+  policy_type_schema:
+    type: object
+    required:
+      - name
+      - description
+      - policy_type_id
+      - create_schema
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: name of the policy type
+      description:
+        type: string
+        description: description of the policy type
+      policy_type_id:
+        description: the integer of the policy type
+        type: integer
+      create_schema:
+        type: object
+        description: >
+          jsonschema (following http://json-schema.org/draft-07/schema) of the
+          CREATE payload to be sent to handlers of this policy
+  policy_type_id:
+    description: >
+      represents a policy type identifier. Currently this is restricted to an
+      integer range.
+    type: integer
+    minimum: 1
+    maximum: 2147483647
+  policy_instance_id:
+    description: >
+      represents a policy instance identifier. UUIDs are advisable but can be
+      any string
+    type: string
+    example: 3d2157af-6a8f-4a7c-810f-38c2f824bf12
+x-components: {}
+

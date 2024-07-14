@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "a1mediator.fullname" . }}
+  labels:
+{{ include "a1mediator.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "a1mediator.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "a1mediator.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      imagePullSecrets:
+        - name: "{{ .Values.lf_docker_reg_secret }}"
+      containers:
+        - name: {{ .Chart.Name }}
+          volumeMounts:
+          - name: a1conf
+            mountPath: /opt/route/local.rt
+            subPath: local.rt
+          env:
+          # this sets the source field in messages from a1 to point back to a1s service name, rather than it's random pod name
+          - name: RMR_SRC_ID
+            value: {{ .Values.rmrservice.name }}
+          - name: PYTHONUNBUFFERED
+            value: "1"
+          - name: A1_RMR_RETRY_TIMES
+            value: "{{ .Values.rmr_timeout_config.rcv_retry_times }}"
+          - name: INSTANCE_DELETE_NO_RESP_TTL
+            value: "5"
+          - name: INSTANCE_DELETE_RESP_TTL
+            value: "10"
+          - name: DBAAS_SERVICE_HOST
+            value: "dbaas"
+          - name: DBAAS_SERVICE_PORT
+            value: "6379"
+
+          image: "a1:latest"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.httpservice.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /a1-p/healthcheck
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /a1-p/healthcheck
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: "a1conf"
+          configMap:
+            name: "a1conf"

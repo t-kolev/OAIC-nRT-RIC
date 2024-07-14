@@ -1,0 +1,4 @@
+# Trivial RMR route table
+newrt | start
+rte   | 1 | app10:4560
+newrt | end

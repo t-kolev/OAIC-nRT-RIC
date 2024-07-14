@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "testreceiver.fullname" . }}
+  labels:
+{{ include "testreceiver.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "testreceiver.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "testreceiver.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        #query receiver
+        - name: queryreceiver
+          image: queryreceiver:latest
+          imagePullPolicy: Never
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: queryreceiverconf
+              mountPath: /opt/route/local.rt
+              subPath: local.rt
+          env:
+            # tells the test xapp to do a query
+            - name: DO_QUERY
+              value: "YES"
+            # this sets the source field in messages from a1 to point back to a1s service name, rather than it's random pod name
+            - name: RMR_SRC_ID
+              value: {{ .Values.queryrmrservice.name }}
+            - name: HANDLER_ID
+              value: "query_tester"
+            # the xapp framework requires this to work, even if SDL isn't used.
+            # it does an SDL healthcheck before it starts up properly
+            # moreover, the db config section doesn't appear to be honored; with that set, but not this, it doesn't find SDL
+            # so we need this here for the test receiver which uses the xapp framework to work
+            - name: DBAAS_SERVICE_HOST
+              value: "dbaas"
+            - name: DBAAS_SERVICE_PORT
+              value: "6379"
+
+        # test receiver
+        - name: testreceiver
+          image: testreceiver:latest
+          imagePullPolicy: Never
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: testreceiverconf
+              mountPath: /opt/route/local.rt
+              subPath: local.rt
+          env:
+            - name: DBAAS_SERVICE_HOST
+              value: "dbaas"
+            - name: DBAAS_SERVICE_PORT
+              value: "6379"
+
+        # test receiver that delays until sending
+        - name: delayreceiver
+          image: delayreceiver:latest
+          imagePullPolicy: Never
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: delayreceiverconf
+              mountPath: /opt/route/local.rt
+              subPath: local.rt
+          env:
+            - name: TEST_RCV_SEC_DELAY
+              value: "5"
+            - name: HANDLER_ID
+              value: "delay_receiver"
+            - name: DBAAS_SERVICE_HOST
+              value: "dbaas"
+            - name: DBAAS_SERVICE_PORT
+              value: "6379"
+
+      volumes:
+        - name: "testreceiverconf"
+          configMap:
+            name: "testreceiverconf"
+        - name: "delayreceiverconf"
+          configMap:
+            name: "delayreceiverconf"
+        - name: "queryreceiverconf"
+          configMap:
+            name: "queryreceiverconf"
