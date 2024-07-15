@@ -549,7 +549,7 @@ def generate_plots(total_vulnerabilities_ric, vulnerabilities_per_repo, severity
         plt.show()
 
     # Plot distribution of vulnerable packages per RIC
-    plt.figure(figsize=(3, 5))
+    plt.figure(figsize=(7, 5))
     plt.bar(vulnerable_packages_per_ric.keys(), vulnerable_packages_per_ric.values(), color=color_blind_friendly_palette['yellow'], width=0.5)
     plt.title('Distribution of Vulnerable Dependency Packages per RIC')
     plt.xlabel('RIC')

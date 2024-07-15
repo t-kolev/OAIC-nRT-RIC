@@ -2,7 +2,7 @@ name: Continuous SCA Scanning
 
 on:
   push:
-    branches: [ "dif_approach" ]
+    branches: [ "final_version" ]
   schedule:
     - cron: 0 12 * * 1
   # At 12:00 on Monday.
