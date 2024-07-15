@@ -1,27 +1,12 @@
 #!/bin/bash
 
-# Check if an argument is provided
+# Check if a URLs file argument is provided
 if [ -z "$1" ]; then
-    echo "Error: No argument provided. Please provide one of the following: onos, osc, oaic"
+    echo "Error: No URLs file provided. Please provide the path to the URLs file."
     exit 1
 fi
 
-# Determine the URLs file based on the argument
-case $1 in
-    onos)
-        URLS_FILE="onos_links.txt"
-        ;;
-    osc)
-        URLS_FILE="osc_links.txt"
-        ;;
-    oaic)
-        URLS_FILE="oaic_links.txt"
-        ;;
-    *)
-        echo "Error: Invalid argument. Please provide one of the following: onos, osc, oaic"
-        exit 1
-        ;;
-esac
+URLS_FILE="$1"
 
 # Remote branch
 REMOTE_BRANCH="master"
@@ -58,5 +43,8 @@ while IFS= read -r url; do
         fi
     fi
 done < "$URLS_FILE"
-git push  # Push the changes 
+
+# Push the changes
+git push
+
 echo "All subtrees updated successfully"
